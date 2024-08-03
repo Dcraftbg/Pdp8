@@ -1,0 +1,3 @@
+[workspace]
+members = ["pdp8asm"]
+resolver = "2"
