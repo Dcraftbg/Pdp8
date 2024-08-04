@@ -1,5 +1,7 @@
 use std::num::ParseIntError;
 
+use crate::{Token, TokenKind};
+
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum LexerError {
@@ -65,7 +67,9 @@ impl <'d> Lexer <'d> {
                     }
                 }
                 let (lit, rest) = self.src.split_at(end);
-                if lit.len() == 0 { return Some(Token { kind: TokenKind::CurrentInst }); }
+                if lit.len() == 0 {
+                    return Some(Token { kind: TokenKind::CurrentInst }); 
+                }
                 self.src = rest;
                 Some(
                   Token {
