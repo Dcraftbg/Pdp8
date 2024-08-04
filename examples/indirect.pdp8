@@ -1,0 +1,4 @@
+JUMP_TO:
+   .w $1
+
+jmp [JUMP_TO]

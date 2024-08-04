@@ -110,9 +110,8 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
                    let addr;
                    if let Some(t) = lexer.peak() {
                        mode = match t.kind {
-                           TokenKind::Word("I") => 0b1,
+                           TokenKind::OpenSquare => 0b1,
                            TokenKind::Word("Z") => 0b10,
-                           TokenKind::Word("IZ") => 0b11,
                            _ => 0,
                        }
                    } 
@@ -142,7 +141,16 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
                    }
                    if addr > 127 {
                        panic!("addr too big: {}",addr);
-                   } 
+                   }
+                   if mode == 0b1 {
+                       if let Some(v) = lexer.next() {
+                           if v.kind != TokenKind::CloseSquare {
+                               panic!("Expected closing ']' but got {}",TDisplay(&v));
+                           }
+                       } else {
+                           panic!("Expected closing ']'");
+                       }
+                   }
                    out.encode_basic(opcode, mode, addr)?;
                 }
             }
