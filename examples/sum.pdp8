@@ -1,4 +1,4 @@
 ; Yoo I got comments working
-tad $1
+tad $1 
 tad $2
-iot $4 $0b10
+; iot $4 $0b10

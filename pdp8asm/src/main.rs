@@ -1,4 +1,4 @@
-use std::{env, fs, io, process::ExitCode};
+use std::{collections::HashMap, env, fs, io, process::ExitCode};
 mod lexer;
 mod token;
 use token::*;
@@ -34,11 +34,22 @@ impl Output for Serialiser {
         self.push_u12(a);
         Ok(())
     }
+    fn encode_word(&mut self, word: u16) -> io::Result<()> {
+        self.push_u12(word);
+        Ok(())
+    }
     fn get_ip(&self) -> usize {
         self.head
     }
 }
-fn expect_int(t: Option<Token>, what: &str) -> u8 {
+fn expect_u8(t: Option<Token>, what: &str) -> u8 {
+    let v = expect_int(t, what);
+    if v >= 256 {
+        panic!("Expected integer with size <256 but got {}",v);
+    }
+    v as u8
+}
+fn expect_int(t: Option<Token>, what: &str) -> u16 {
     if t.is_none() { panic!("Expected {} but found EOF",what); }
     let t = t.as_ref().unwrap();
     match t.kind {
@@ -49,14 +60,36 @@ fn expect_int(t: Option<Token>, what: &str) -> u8 {
 trait Output {
     fn encode_iot(&mut self, device: u8, function: u8) -> io::Result<()>;
     fn encode_basic(&mut self, opcode: u8, mode: u8, addr: u8) -> io::Result<()>;
+    fn encode_word(&mut self, word: u16) -> io::Result<()>;
     #[allow(dead_code)]
     fn get_ip(&self) -> usize;
 }
+const WORD_LIMIT: u16 = 1<<12;
 fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
     let mut lexer = Lexer::new(&src);
+    let mut labels: HashMap<&str, usize> = HashMap::new();
     while let Some(t) = lexer.next() {
         match t.kind {
+            TokenKind::DotWord(word) => {
+                match word {
+                    "w" => {
+                        let word = expect_int(lexer.next(), "word after .w");
+                        if word >= WORD_LIMIT {
+                            panic!("Integer exceeds word limit of <{} but got {}",WORD_LIMIT,word);
+                        }
+                        out.encode_word(word)?;
+                    }
+                    _ => panic!("Unknown DotWord: {:?}",word)
+                }
+            }
             TokenKind::Word(op) => {
+                if let Some(tok) = lexer.peak() {
+                    if tok.kind == TokenKind::DoubleDot {
+                        lexer.eat();
+                        labels.insert(op, out.get_ip());
+                        continue;
+                    }
+                } 
                 let opcode: u8 = match op {
                     "and" | "AND" => 0b000,
                     "tad" | "TAD" => 0b001,
@@ -69,8 +102,8 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
                     _ => panic!("Unknown instruction {}",op)
                 };
                 if opcode == IOT {
-                    let device = expect_int(lexer.next(), "device after IOT");
-                    let function = expect_int(lexer.next(), "function after IOT");
+                    let device = expect_u8(lexer.next(), "device after IOT");
+                    let function = expect_u8(lexer.next(), "function after IOT");
                     out.encode_iot(device, function)?;
                 } else {
                    let mut mode = 0;
@@ -88,7 +121,19 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
                        Some(t) => {
                            match t.kind {
                                TokenKind::Integer(v) => {
-                                   addr = v
+                                   addr = v as u8;
+                               }
+                               TokenKind::CurrentInst => {
+                                   // NOTE: I know its technically not correct but 
+                                   // it will do for now
+                                   addr = out.get_ip() as u8;
+                               }
+                               TokenKind::Word(w) => {
+                                   if let Some(label) = labels.get(w) {
+                                       addr = *label as u8;
+                                   } else {
+                                       panic!("Unknown label: {}",w);
+                                   }
                                }
                                _ => panic!("Expected Integer or [ after instruction but got {}",TDisplay(&t))
                            }
