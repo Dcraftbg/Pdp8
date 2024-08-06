@@ -17,7 +17,7 @@ impl Serialiser {
             self.data.push(v as u8);
         } else {
             let last = self.data.len()-1;
-            self.data[last] = (v << 4) as u8;
+            self.data[last] |= (v << 4) as u8;
         }
         self.data.push((v >> 8) as u8);
         self.head+=1;
