@@ -1,0 +1,4 @@
+jmp START
+
+START:
+   jmp $

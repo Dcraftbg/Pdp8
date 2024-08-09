@@ -8,20 +8,46 @@ struct Serialiser {
     head: usize, // in 12 bit instructions
 }
 const IOT: u8 = 0b110;
+const fn addr_u12_to_normal(addr: usize) -> usize {
+    addr * 3 / 2
+}
 impl Serialiser {
     fn new() -> Self {
         Self { data: Vec::new(), head: 0 }
     }
     fn push_u12(&mut self, v: u16) {
+        let normhead = addr_u12_to_normal(self.head);
+        if normhead + 2 > self.data.len() { self.data.resize_with(normhead+2, || 0); }
         if self.head % 2 == 0 {
-            self.data.push(v as u8);
-            self.data.push((v >> 8) as u8);
+            self.data[normhead]   = v as u8;
+            self.data[normhead+1] &= !0b00001111;
+            self.data[normhead+1] |= (v >> 8) as u8;
         } else {
-            let last = self.data.len()-1;
-            self.data[last] |= (v << 4) as u8;
-            self.data.push((v >> 4) as u8);
+            self.data[normhead+1] &= !0b11110000;
+            self.data[normhead] |= (v << 4) as u8;
+            self.data[normhead+1] |= (v >> 4) as u8;
         }
         self.head+=1;
+    }
+    fn decode_u12(&mut self) -> u16 {
+        let normhead = addr_u12_to_normal(self.head);
+        if self.head % 2 == 0 {
+            assert!(normhead + 1 < self.data.len());
+            (self.data[normhead] as u16) | (((self.data[normhead+1] as u16) & 0b1111) << 8)
+        } else {
+            assert!(normhead + 1 < self.data.len());
+            ((self.data[normhead] as u16) >> 4) | (((self.data[normhead+1] as u16)) << 4)
+        }
+    }
+    fn decode_basic(&mut self) -> io::Result<(u8, u8, u8)> {
+        let v = self.decode_u12();
+        Ok(((v & 0b111) as u8, ((v >> 3) & 0b11) as u8, (v >> 5) as u8))
+    }
+    fn set_ip(&mut self, ip: usize) -> usize {
+        if ip > self.data.len() { self.data.resize_with(ip, || 0); }
+        let old = self.head;
+        self.head = ip;
+        old
     }
 }
 impl Output for Serialiser {
@@ -66,9 +92,10 @@ trait Output {
     fn get_ip(&self) -> usize;
 }
 const WORD_LIMIT: u16 = 1<<12;
-fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
+fn assemble_program(out: &mut Serialiser, src: &str) -> io::Result<()> {
     let mut lexer = Lexer::new(&src);
     let mut labels: HashMap<&str, usize> = HashMap::new();
+    let mut future_labels: HashMap<&str, Vec<usize>> = HashMap::new();
     while let Some(t) = lexer.next() {
         match t.kind {
             TokenKind::DotWord(word) => {
@@ -87,7 +114,16 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
                 if let Some(tok) = lexer.peak() {
                     if tok.kind == TokenKind::DoubleDot {
                         lexer.eat();
-                        labels.insert(op, out.get_ip());
+                        let at = out.get_ip();
+                        if let Some(v) = future_labels.remove(op) {
+                            for x in v {
+                                out.set_ip(x);
+                                let (opcode, mode, _addr) = out.decode_basic()?;
+                                out.encode_basic(opcode, mode, at as u8)?;
+                            }
+                        }
+                        out.set_ip(at);
+                        labels.insert(op, at);
                         continue;
                     }
                 } 
@@ -108,7 +144,7 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
                     out.encode_iot(device, function)?;
                 } else {
                    let mut mode = 0;
-                   let addr;
+                   let mut addr = 0;
                    if let Some(t) = lexer.peak() {
                        mode = match t.kind {
                            TokenKind::OpenSquare => 0b1,
@@ -132,7 +168,11 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
                                    if let Some(label) = labels.get(w) {
                                        addr = *label as u8;
                                    } else {
-                                       panic!("Unknown label: {}",w);
+                                       if let Some(v) = future_labels.get_mut(w) {
+                                           v.push(out.get_ip() as usize);
+                                       } else {
+                                           future_labels.insert(w, vec![out.get_ip() as usize]);
+                                       }
                                    }
                                }
                                _ => panic!("Expected Integer or [ after instruction but got {}",TDisplay(&t))
@@ -157,6 +197,12 @@ fn assemble_program(out: &mut dyn Output, src: &str) -> io::Result<()> {
             }
             _ => panic!("Unexpected token: {:?}",t.kind)
         }
+    }
+    if future_labels.len() > 0 {
+        for (name, v) in future_labels.iter() {
+           eprintln!("ERROR: Unknown label: {} referenced in {} places",name,v.len());
+        }
+        panic!()
     }
     Ok(())
 }
