@@ -110,6 +110,32 @@ fn assemble_program(out: &mut Serialiser, src: &str) -> io::Result<()> {
                     _ => panic!("Unknown DotWord: {:?}",word)
                 }
             }
+            TokenKind::CurrentInst => {
+                if let Some(tok) = lexer.next() {
+                    assert!(tok.kind == TokenKind::Equal, "ERROR: expected = after $ but found {}",TDisplay(&tok));
+                    let tok = lexer.next();
+                    match tok {
+                       Some(tok) => {
+                           match tok.kind {
+                               TokenKind::Integer(v) => {
+                                   out.set_ip(v as usize);
+                               }
+                               _ => {
+                                   eprintln!("ERROR: expected integer after \"$ =\" but got {}", TDisplay(&tok));
+                                   panic!();
+                               }
+                           }
+                       }
+                       None => {
+                           eprintln!("ERROR: expected integer after \"$ =\" but got nothing!");
+                           panic!()
+                       }
+                    }
+                } else {
+                    eprintln!("ERROR: expected = after $ but found nothing");
+                    panic!()
+                }
+            }
             TokenKind::Word(op) => {
                 if let Some(tok) = lexer.peak() {
                     if tok.kind == TokenKind::DoubleDot {

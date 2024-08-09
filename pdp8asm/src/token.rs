@@ -9,6 +9,7 @@ pub enum TokenKind<'d> {
     CloseSquare,
     CurrentInst,
     DoubleDot,
+    Equal,
 }
 pub struct Token<'d> {
     pub kind: TokenKind<'d>,
@@ -25,6 +26,7 @@ impl Display for TDisplay<'_, '_> {
             TokenKind::OpenSquare => write!(f, "["),
             TokenKind::CloseSquare => write!(f, "]"),
             TokenKind::DoubleDot   => write!(f, ":"),
+            TokenKind::Equal       => write!(f, "="),
         }
     }
 }

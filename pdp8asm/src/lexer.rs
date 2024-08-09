@@ -90,6 +90,11 @@ impl <'d> Lexer <'d> {
                   }
                 )
             }
+
+            '=' => {
+                self.src = &self.src[1..];
+                Some(Token { kind: TokenKind::Equal })
+            } 
             '.' => {
                 self.src = &self.src[1..];
                 Some(Token { kind: TokenKind::DotWord(self.parse_word()) })
