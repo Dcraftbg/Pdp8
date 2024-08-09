@@ -1,3 +1,7 @@
 target/*
 Cargo.lock
 out.bin
+pdp8emu/
+doodle/
+examples/iot.pdp8
+pdp8emu/

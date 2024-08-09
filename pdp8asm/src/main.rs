@@ -261,7 +261,7 @@ fn main() -> ExitCode {
         }
     }
     if path.is_none() {
-        eprintln!("Expected input path!\n");
+        eprintln!("Expected input path!");
         return ExitCode::FAILURE;
     }
     let path = path.as_ref().unwrap().as_str();
